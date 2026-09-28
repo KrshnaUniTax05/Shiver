@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Shiver — Global Anonymous Web Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl-util/0.15.1/nacl-util.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+        .hide { display: none !important; }
+        .msg-bubble { max-width: 80%; word-break: break-word; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Screen: Unlock -->
+    <div id="screen-unlock" class="flex-1 flex flex-col items-center justify-center p-6 space-y-6">
+        <div class="text-center">
+            <h1 class="text-4xl font-bold tracking-tight text-cyan-400">SHIVER</h1>
+            <p class="text-slate-400 mt-2 text-sm">Anonymous. Encrypted. Yours.</p>
+        </div>
+        <div class="w-full max-w-md bg-slate-800 p-6 rounded-2xl shadow-xl space-y-4 border border-slate-700">
+            <div>
+                <label class="block text-sm text-slate-300 mb-1">Secret Sentence</label>
+                <textarea id="passphrase" rows="3" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:outline-none focus:border-cyan-500 transition-colors" placeholder="e.g. purple elephant dancing under frozen skies"></textarea>
+            </div>
+            <div class="flex items-start space-x-2 mt-4">
+                <input type="checkbox" id="ack-checkbox" class="mt-1 w-4 h-4 rounded bg-slate-900 border-slate-600 text-cyan-500 focus:ring-cyan-500">
+                <label for="ack-checkbox" class="text-xs text-slate-400 leading-tight">
+                    I understand this sentence is my ONLY key. If I forget it, my account is lost forever. Whoever knows it owns the account.
+                </label>
+            </div>
+            <button id="btn-unlock" class="w-full py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all">Unlock Account</button>
+        </div>
+    </div>
+
+    <!-- Screen: Home (Chat List) -->
+    <div id="screen-home" class="hide flex-1 flex flex-col h-full">
+        <div class="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center shrink-0">
+            <div>
+                <div class="text-xs text-slate-400 uppercase tracking-widest">Your Code</div>
+                <div class="text-xl font-mono font-bold text-cyan-400 flex items-center space-x-2">
+                    <span id="my-code-display">----------</span>
+                    <button id="btn-copy" class="text-sm bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-white active:scale-95 transition-transform">Copy</button>
+                </div>
+            </div>
+            <button id="btn-settings" class="text-slate-400 hover:text-white p-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </button>
+        </div>
+        
+        <div class="p-4 bg-slate-900 border-b border-slate-800 shrink-0">
+            <form id="search-form" class="flex space-x-2">
+                <input type="text" id="search-input" placeholder="Paste 10-char code..." class="flex-1 bg-slate-800 border border-slate-700 text-white p-3 rounded-lg focus:outline-none focus:border-cyan-500 uppercase font-mono" maxlength="10">
+                <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white px-4 rounded-lg font-semibold">Chat</button>
+            </form>
+        </div>
+
+        <div id="chat-list" class="flex-1 overflow-y-auto p-2 space-y-1">
+            <!-- Chats populated here -->
+        </div>
+    </div>
+
+    <!-- Screen: Chat View -->
+    <div id="screen-chat" class="hide flex-1 flex flex-col h-full bg-slate-900">
+        <div class="bg-slate-800 p-4 border-b border-slate-700 flex items-center space-x-4 shrink-0">
+            <button id="btn-back" class="text-slate-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+            </button>
+            <div class="flex-1">
+                <div class="text-sm text-slate-400 uppercase tracking-wider text-xs">Chatting with</div>
+                <div class="font-mono font-bold text-cyan-400" id="chat-peer-code">----------</div>
+            </div>
+        </div>
+        <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide flex flex-col">
+            <!-- Messages populated here -->
+        </div>
+        <div class="p-3 bg-slate-800 border-t border-slate-700 shrink-0">
+            <form id="msg-form" class="flex space-x-2">
+                <input type="text" id="msg-input" placeholder="Type a message..." class="flex-1 bg-slate-900 border border-slate-700 text-white p-3 rounded-lg focus:outline-none focus:border-cyan-500" autocomplete="off">
+                <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white px-4 rounded-lg">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Screen: Settings -->
+    <div id="screen-settings" class="hide flex-1 flex flex-col h-full">
+        <div class="bg-slate-800 p-4 border-b border-slate-700 flex items-center space-x-4 shrink-0">
+            <button id="btn-back-settings" class="text-slate-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+            </button>
+            <div class="text-lg font-bold">Settings & Info</div>
+        </div>
+        <div class="p-6 space-y-6 overflow-y-auto">
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <h3 class="text-cyan-400 font-bold mb-2">How Shiver Protects You</h3>
+                <ul class="text-sm text-slate-300 space-y-2 list-disc list-inside">
+                    <li>Your device mathematically converts your sentence into your account keys.</li>
+                    <li>The server NEVER sees your sentence or your private keys.</li>
+                    <li>All messages are End-to-End Encrypted (E2EE).</li>
+                    <li>Message routing is anonymous. The server doesn't know who sends messages.</li>
+                </ul>
+            </div>
+            <button id="btn-lock" class="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg shadow-lg transition-colors">Lock App & Clear Session</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
